@@ -202,8 +202,10 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 	}
 }*/
 
-void	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char	***Words, int	**CFrom, int	**CTo)
+int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char	***Words, int	**CFrom, int	**CTo)
 {
+	if(check_mbs(mbstring) != 0)return -1;
+
 	int	nchanges = 0, i;
 	DEBUG("preprocessing '%s'\n", mbstring);
 	struct transformed_string	ts;
@@ -276,4 +278,5 @@ void	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, cha
 	else free(cfrom_array);
 	if(CTo)*CTo = cto_array;
 	else free(cto_array);
+	return 0;
 }

@@ -37,12 +37,14 @@ struct preprocessor;
 #endif
 
 struct preprocessor	*repp_load(char	*file_path);
-int			repp_load_module(struct preprocessor	*p, char	*file_path, char	*module_name);
+struct preprocessor	*repp_clone(struct preprocessor	*repp, void*	(*alloc)(int	len));
+int			repp_load_module(struct preprocessor	*p, char	*file_path, char	*module_name, int	enable);
+void			repp_enable_module(struct preprocessor_module	*m, int	enable);
 
 struct preprocessor_module	*repp_find_module(struct preprocessor	*repp, wchar_t	*name);
 void	repp_print_rules(struct preprocessor	*repp);
 void	repp_compile_rules(struct preprocessor	*repp);
 
-void	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char	***Words, int	**CFrom, int	**CTo);
+int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char	***Words, int	**CFrom, int	**CTo);
 
 #endif

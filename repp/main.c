@@ -61,7 +61,7 @@ int	main(int	argc, char	*argv[])
 	while( (ch = getopt(argc, argv, "m:y")) != -1) switch(ch)
 	{
 		case	'm':
-			repp_load_module(repp, optarg, NULL);
+			repp_load_module(repp, optarg, NULL, 1);
 			break;
 		case	'y':
 			yy_output = 1;
@@ -84,7 +84,11 @@ int	main(int	argc, char	*argv[])
 		// preprocess the line of input
 		int	i, nwords, *cfrom, *cto;
 		char	**words;
-		repp_preprocess(repp, buffer, &nwords, &words, &cfrom, &cto);
+		if(0 != repp_preprocess(repp, buffer, &nwords, &words, &cfrom, &cto))
+		{
+			fprintf(stderr, "unable to process line '%s'\n", buffer);
+			continue;
+		}
 		// output the preprocessing result
 		if(yy_output)
 			output_yy(nwords, words, cfrom, cto);

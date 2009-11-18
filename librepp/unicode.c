@@ -18,6 +18,22 @@ char	*tombs(wchar_t	*w)
 	return str;
 }
 
+int	check_mbs(char	*mbs)
+{
+	int		len = strlen(mbs);
+	wchar_t	*wide = malloc(sizeof(wchar_t)*(len+1));
+	if(-1 == mbstowcs(wide, mbs, len+1))
+	{
+		free(wide);
+		return -1;
+	}
+	else
+	{
+		free(wide);
+		return 0;
+	}
+}
+
 wchar_t	*towide(char	*mbs)
 {
 	int		len = strlen(mbs);

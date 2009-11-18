@@ -17,49 +17,54 @@
 
 static int	load_repp_module_from_file_with_name(struct preprocessor	*repp, char	*fname, wchar_t	*name);
 
-#ifdef	FREEZER
-struct preprocessor_module	*freeze_repp_module(struct preprocessor_module	*mod)
+wchar_t	*freeze_wcs(wchar_t	*win, void*	(*alloc)(int len))
 {
-	struct preprocessor_module	*f_mod = slab_alloc(sizeof(struct preprocessor_module));
+	int	len = wstrlen(win);
+	wchar_t	*wout = alloc(sizeof(wchar_t)*(len+1));
+	return wstrcpy(wout, win);
+}
+
+void	*freeze_block(void	*block, int	len, void*	(*alloc)(int len))
+{
+	void	*out = alloc(len);
+	memcpy(out, block, len);
+	return out;
+}
+
+struct preprocessor_module	*freeze_repp_module(struct preprocessor_module	*mod, void*	(*alloc)(int len))
+{
+	struct preprocessor_module	*f_mod = alloc(sizeof(struct preprocessor_module));
 	bzero(f_mod, sizeof(*f_mod));
 	int i;
-	f_mod->name = freeze_wcs(mod->name);
+	f_mod->name = freeze_wcs(mod->name, alloc);
 	f_mod->nrules = mod->nrules;
 	f_mod->is_iterative = mod->is_iterative;
 	f_mod->is_enabled = mod->is_enabled;
-	f_mod->rules = freeze_block(mod->rules, sizeof(struct pprule)*mod->nrules);
+	f_mod->rules = freeze_block(mod->rules, sizeof(struct pprule)*mod->nrules, alloc);
 	for(i=0;i<f_mod->nrules;i++)
 	{
-		f_mod->rules[i].pat = freeze_wcs(mod->rules[i].pat);
-		f_mod->rules[i].rep = freeze_wcs(mod->rules[i].rep);
+		f_mod->rules[i].pat = freeze_wcs(mod->rules[i].pat, alloc);
+		f_mod->rules[i].rep = freeze_wcs(mod->rules[i].rep, alloc);
 	}
 	return f_mod;
 }
 
-void	*freeze_repp()
+struct preprocessor	*repp_clone(struct preprocessor	*repp, void*	(*alloc)(int	len))
 {
 	int	i;
-	struct preprocessor	*f_repp = slab_alloc(sizeof(struct preprocessor));
+	struct preprocessor	*f_repp = alloc(sizeof(struct preprocessor));
 	bzero(f_repp, sizeof(*f_repp));
 	f_repp->nmodules = repp->nmodules;
-	f_repp->delim_pat = freeze_wcs(repp->delim_pat);
-	f_repp->modules = slab_alloc(sizeof(struct preprocessor_module*) * f_repp->nmodules);
+	f_repp->delim_pat = freeze_wcs(repp->delim_pat, alloc);
+	f_repp->modules = alloc(sizeof(struct preprocessor_module*) * f_repp->nmodules);
 	for(i=0;i<repp->nmodules;i++)
 	{
-		f_repp->modules[i] = freeze_repp_module(repp->modules[i]);
+		f_repp->modules[i] = freeze_repp_module(repp->modules[i], alloc);
 		if(repp->modules[i] == repp->main_module)
 			f_repp->main_module = f_repp->modules[i];
 	}
 	return f_repp;
 }
-
-void	recover_repp(void	*ptr)
-{
-	repp = ptr;
-	repp_compile_rules(repp);
-}
-
-#endif
 
 void	repp_print_rules(struct preprocessor	*repp)
 {
@@ -251,7 +256,7 @@ static int	load_repp_module_from_file_with_name(struct preprocessor	*repp, char	
 	return 0;
 }
 
-int			repp_load_module(struct preprocessor	*repp, char	*fname, char	*module_name)
+int			repp_load_module(struct preprocessor	*repp, char	*fname, char	*module_name, int	enable)
 {
 	wchar_t	*mod_name;
 
@@ -268,8 +273,13 @@ int			repp_load_module(struct preprocessor	*repp, char	*fname, char	*module_name
 
 	int	r = load_repp_module_from_file_with_name(repp, fname, mod_name);
 	struct preprocessor_module	*mod = repp_find_module(repp, mod_name);
-	mod->is_enabled = 1;
+	mod->is_enabled = enable;
 	return r;
+}
+
+void			repp_enable_module(struct preprocessor_module	*m, int	enable)
+{
+	m->is_enabled = enable;
 }
 
 struct preprocessor	*repp_load(char	*fname)
