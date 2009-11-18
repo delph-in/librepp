@@ -19,6 +19,7 @@ static int	load_repp_module_from_file_with_name(struct preprocessor	*repp, char	
 
 wchar_t	*freeze_wcs(wchar_t	*win, void*	(*alloc)(int len))
 {
+	if(!win)return NULL;
 	int	len = wstrlen(win);
 	wchar_t	*wout = alloc(sizeof(wchar_t)*(len+1));
 	return wstrcpy(wout, win);
