@@ -237,7 +237,7 @@ int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char
 			
 			wchar_t	*wide_token = calloc(b.rm_so+1,sizeof(wchar_t));
 			memcpy(wide_token, p, (int)b.rm_so * sizeof(wchar_t));
-			char	*slab_mbs = tombs(wide_token);
+			char	*heap_mbs = tombs(wide_token);
 
 			int	c_from = wstrlen(orig_str);
 			int	c_to = 0;
@@ -254,11 +254,12 @@ int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char
 
 			nwords++;
 			words = realloc(words, sizeof(char*)*nwords);
-			words[nwords-1] = strdup(slab_mbs);
+			words[nwords-1] = heap_mbs;
 			cfrom_array = realloc(cfrom_array, sizeof(int)*nwords);
 			cto_array = realloc(cto_array, sizeof(int)*nwords);
 			cfrom_array[nwords-1] = c_from;
 			cto_array[nwords-1] = c_to;
+			free(wide_token);
 		}
 		p += b.rm_eo;
 	}

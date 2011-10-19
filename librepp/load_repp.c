@@ -17,7 +17,7 @@
 
 static int	load_repp_module_from_file_with_name(struct preprocessor	*repp, char	*fname, wchar_t	*name);
 
-wchar_t	*freeze_wcs(wchar_t	*win, void*	(*alloc)(int len))
+wchar_t	*_repp_freeze_wcs(wchar_t	*win, void*	(*alloc)(int len))
 {
 	if(!win)return NULL;
 	int	len = wstrlen(win);
@@ -25,7 +25,7 @@ wchar_t	*freeze_wcs(wchar_t	*win, void*	(*alloc)(int len))
 	return wstrcpy(wout, win);
 }
 
-void	*freeze_block(void	*block, int	len, void*	(*alloc)(int len))
+void	*_repp_freeze_block(void	*block, int	len, void*	(*alloc)(int len))
 {
 	void	*out = alloc(len);
 	memcpy(out, block, len);
@@ -37,15 +37,15 @@ struct preprocessor_module	*freeze_repp_module(struct preprocessor_module	*mod, 
 	struct preprocessor_module	*f_mod = alloc(sizeof(struct preprocessor_module));
 	bzero(f_mod, sizeof(*f_mod));
 	int i;
-	f_mod->name = freeze_wcs(mod->name, alloc);
+	f_mod->name = _repp_freeze_wcs(mod->name, alloc);
 	f_mod->nrules = mod->nrules;
 	f_mod->is_iterative = mod->is_iterative;
 	f_mod->is_enabled = mod->is_enabled;
-	f_mod->rules = freeze_block(mod->rules, sizeof(struct pprule)*mod->nrules, alloc);
+	f_mod->rules = _repp_freeze_block(mod->rules, sizeof(struct pprule)*mod->nrules, alloc);
 	for(i=0;i<f_mod->nrules;i++)
 	{
-		f_mod->rules[i].pat = freeze_wcs(mod->rules[i].pat, alloc);
-		f_mod->rules[i].rep = freeze_wcs(mod->rules[i].rep, alloc);
+		f_mod->rules[i].pat = _repp_freeze_wcs(mod->rules[i].pat, alloc);
+		f_mod->rules[i].rep = _repp_freeze_wcs(mod->rules[i].rep, alloc);
 	}
 	return f_mod;
 }
@@ -56,7 +56,7 @@ struct preprocessor	*repp_clone(struct preprocessor	*repp, void*	(*alloc)(int	le
 	struct preprocessor	*f_repp = alloc(sizeof(struct preprocessor));
 	bzero(f_repp, sizeof(*f_repp));
 	f_repp->nmodules = repp->nmodules;
-	f_repp->delim_pat = freeze_wcs(repp->delim_pat, alloc);
+	f_repp->delim_pat = _repp_freeze_wcs(repp->delim_pat, alloc);
 	f_repp->modules = alloc(sizeof(struct preprocessor_module*) * f_repp->nmodules);
 	for(i=0;i<repp->nmodules;i++)
 	{

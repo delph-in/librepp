@@ -2,14 +2,14 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([repp], [0.2.1], [sweaglesw@sweaglesw.org])
-AM_INIT_AUTOMAKE([repp], [0.2.1])
+AC_INIT([repp], [0.2.2], [sweaglesw@sweaglesw.org])
+AM_INIT_AUTOMAKE([repp], [0.2.2])
 AC_CONFIG_SRCDIR([librepp/load_repp.c])
 #AC_CONFIG_HEADER([config.h])
+AC_CONFIG_MACRO_DIR([m4])
 
 # Checks for programs.
 AC_PROG_CC
-AC_PROG_RANLIB
 AC_PROG_LIBTOOL
 #LT_PREREQ([2.2])
 #LT_INIT([dlopen])
