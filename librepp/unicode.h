@@ -9,6 +9,6 @@ int	wstrlen(const wchar_t	*str);
 wchar_t	*wstrcpy(wchar_t	*dest, const wchar_t	*src);
 wchar_t	*wstrdup(const wchar_t	*in);
 int	wstrcmp(const wchar_t	*a, const wchar_t	*b);
-wchar_t	*wide_unescape(wchar_t	*str);
+wchar_t	*wide_unescape_re(wchar_t	*str);
 
 #endif

@@ -3,6 +3,7 @@
 #include	<string.h>
 #include	<assert.h>
 #include	<wchar.h>
+#include	<ctype.h>
 
 #include	"unicode.h"
 
@@ -92,7 +93,46 @@ int	wstrcmp(const wchar_t	*a, const wchar_t	*b)
 	return 0;
 }
 
-wchar_t	*wide_unescape(wchar_t	*str)
+wchar_t	*wide_escape_re_braces(wchar_t	*str)
+{
+	int	nbr = 0, i;
+	for(i=0;str[i];i++)
+		if(str[i] == '{' || str[i] == '}')nbr++;
+	// allocate space to escape every brace
+	wchar_t	*out = calloc(sizeof(wchar_t), wcslen(str) + nbr + 1);
+
+	wchar_t	*p = out, *q = str;
+	int	in_pat = 0;
+	while(*q)
+	{
+		if(*q == '{')
+		{
+			int	is_range = 1, is_id = 1;
+			wchar_t	*s = q+1;
+			while(*s && *s != '}')
+			{
+				if(!isdigit(*s) && *s!=',')
+					is_range = 0;
+				if(*s == '{')
+					is_id = 0;
+				s++;
+			}
+			if(s<str+2)is_id = 0;
+			else if(s[-2] != '\\')is_id = 0;
+			else if(s[-1] != 'x' && s[-1] != 'p' && s[-1] != 'P')is_id = 0;
+			if(is_range || is_id)
+				in_pat = 1;
+			else *p++ = '\\';
+		}
+		else if(*q == '}' && !in_pat)
+			*p++ = '\\';
+		*p++ = *q++;
+	}
+	*p = 0;
+	return out;
+}
+
+wchar_t	*wide_unescape_re(wchar_t	*str)
 {
 	wchar_t	*out = wstrdup(str), *p = out, *q = str;
 
@@ -117,5 +157,6 @@ wchar_t	*wide_unescape(wchar_t	*str)
 		else *p++ = *q++;
 	}
 	*p = 0;
-	return out;
+	return wide_escape_re_braces(out);
+	//return out;
 }

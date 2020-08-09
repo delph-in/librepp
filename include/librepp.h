@@ -6,6 +6,7 @@ enum
 {
 	rtReplace = 1,
 	rtGroupCall = 2,
+	rtMask = 3,
 };
 
 struct pprule

@@ -14,40 +14,80 @@
 //#define	DEBUG	printf
 #define	DEBUG(fmt, ...)	do {} while(0)
 
+#define	MASK_BEGIN	1
+#define	MASK_CONTINUE	2
+
+struct alignment
+{
+	int	begin, end, mask;
+};
+
 struct transformed_string
 {
 	int	length;
 	wchar_t	*string;
-	int	*align;
+	struct alignment	*align;
 };
 
-static struct transformed_string	replace(struct transformed_string	its, regmatch_t	*m, wchar_t	*r)
+static int	check_mask(struct transformed_string	in, struct transformed_string	out)
+{
+	// make sure every masked area of 'in' is present in 'out' with identical alignment.
+	int i, j, k;
+	for(i=0;i<in.length;i++)
+	{
+		if(in.align[i].mask==MASK_BEGIN)
+		{
+			for(j=i+1;j<in.length;j++)
+				if(in.align[j].mask!=MASK_CONTINUE)break;
+			int	len = j-i;
+			// found a masked area on input side from i to i+len
+			for(j=0;j+len<=out.length;j++)
+			{
+				if(out.align[j].mask==MASK_BEGIN)
+				{
+					for(k=0;k<len;k++)
+					{
+						if(in.string[i+k] != out.string[j+k])break;	// masked region content cannot change
+						if(out.align[j+k].mask == 0)break;	// region must be masked in output
+						if(in.align[i+k].begin != out.align[j+k].begin)break;	// must be anchored at the same place
+						if(in.align[i+k].end != out.align[j+k].end)break;	// must be anchored at the same place
+					}
+					if(k==len)break;	// found this masked region.
+				}
+			}
+			if(j+len>out.length)return -1;	// couldn't find it.
+		}
+	}
+	return 0;	// found them all.
+}
+
+static struct transformed_string	replace(struct transformed_string	its, regmatch_t	*m, wchar_t	*r, int	*Nchanges)
 {
 	wchar_t	*out, *p;
 
 	out = malloc(sizeof(wchar_t)*(its.length*2 + wstrlen(r) + 1));
-	int	*align = malloc(sizeof(int)*(its.length*2 + wstrlen(r) + 1));
-	int	*pa;
+	struct alignment	*align = malloc(sizeof(struct alignment)*(its.length*2 + wstrlen(r) + 1));
+	struct alignment	*pa;
 
 	memcpy(out, its.string, sizeof(wchar_t)*m->rm_so);
-	memcpy(align, its.align, sizeof(int) * m->rm_so);
+	memcpy(align, its.align, sizeof(struct alignment) * m->rm_so);
 
 	p = out + m->rm_so;
 	pa = align + m->rm_so;
-	wchar_t	*inp = its.string + m->rm_so;
-	int		*ina = its.align + m->rm_so;
+	wchar_t					*inp = its.string + m->rm_so;
+	struct alignment		*ina = its.align + m->rm_so;
 
 	wchar_t	lost_char = 0;
-	int		lost_char_align = -1;
-	int		*lost_char_align_hole = NULL;
 	wchar_t	lost_char_hole = 0;
+	struct alignment		lost_char_align = {-1,-1,0};
+	struct alignment		*lost_char_align_hole = NULL;
 
-	void	process_lost_char(wchar_t	c, int	a)
+	void	process_lost_char(wchar_t	c, struct alignment	a)
 	{
 		if((c==' ' || c=='\t'))return;
 		lost_char = c;
 		lost_char_align = a;
-		DEBUG("... lost '%C'=>%d\n", lost_char, lost_char_align);
+		DEBUG("... lost '%C'=>%d\n", lost_char, lost_char_align.begin);
 		if(lost_char_align_hole)
 		{
 			if(lost_char_hole != lost_char)
@@ -55,8 +95,15 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 				DEBUG("filling hole '%C' with '%C'\n", lost_char_hole, lost_char);
 			}
 			*lost_char_align_hole = lost_char_align;
+			while(lost_char_align_hole > align && lost_char_align_hole[-1].begin==-2)
+			{
+				*--lost_char_align_hole = lost_char_align;
+				DEBUG("also filling preceding hole\n");
+			}
 			lost_char_align_hole = NULL;
-			lost_char_align = -1;
+			lost_char_align.begin = -1;
+			lost_char_align.end = -1;
+			lost_char_align.mask = 0;
 		}
 	}
 
@@ -64,9 +111,14 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 	{
 		if(*r == '\\' && r[1])
 		{
+			if(!(r[1] >='0' && r[1] <='9'))
+			{
+				fprintf(stderr, "REPP: illegal backreference: \\%c\n", r[1]);
+				exit(-1);
+			}
 			int		i = r[1] - '1';
 			wchar_t	*x = its.string + m[1 + i].rm_so, *e = its.string + m[1 + i].rm_eo;
-			int		*xa = its.align + m[1 + i].rm_so;
+			struct alignment		*xa = its.align + m[1 + i].rm_so;
 
 			// copying from 'x' to 'e' from input
 			// ... see if we are skipping any non-whitespace chars
@@ -85,22 +137,32 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 		}
 		else
 		{
-			*pa = -1;
+			pa->begin = -1;
+			pa->end = -1;
+			pa->mask = 0;
 			// see if we are inserting any non-whitespace
 			if(! (*r==' ' || *r=='\t'))
 			{
 				DEBUG("... hole for '%C'\n", *r);
-				if(lost_char_align != -1)
+				if(lost_char_align.begin != -1)
 				{
-					if(*r != lost_char_align)
+					if(*r != lost_char)
 					{
-						DEBUG("filling hole '%C' with '%C'\n", *r, lost_char_align);
+						DEBUG("filling hole '%C' with '%C'\n", *r, lost_char);
 					}
 					*pa = lost_char_align;
-					lost_char_align = -1;
+					lost_char_align.begin = -1;
+					lost_char_align.end = -1;
+					lost_char_align.mask = 0;
 				}
 				else
 				{
+					if(lost_char_align_hole != NULL)
+					{
+						lost_char_align_hole->begin = -2;	// -2 means inherit value assigned to the next align hole
+						lost_char_align_hole->end = -2;
+						lost_char_align_hole->mask = 0;
+					}
 					lost_char_align_hole = pa;
 					lost_char_hole = *r;
 				}
@@ -113,17 +175,28 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 		process_lost_char(*inp++, *ina++);
 
 	memcpy(p, its.string+m->rm_eo, sizeof(wchar_t)*(its.length - m->rm_eo));
-	memcpy(pa, its.align+m->rm_eo, sizeof(int)*(its.length - m->rm_eo));
+	memcpy(pa, its.align+m->rm_eo, sizeof(struct alignment)*(its.length - m->rm_eo));
 	p[its.length - m->rm_eo] = 0;
-
-	free(its.string);
-	free(its.align);
 
 	struct transformed_string	ots;
 	ots.length = wstrlen(out);
 	ots.string = out;
 	ots.align = align;
-	return ots;
+
+	if(check_mask(its, ots) == 0)
+	{
+		free(its.string);
+		free(its.align);
+		(*Nchanges)++;
+		return ots;
+	}
+	else
+	{
+		printf("masking BLOCKED:\n%S\n%S\n", its.string, ots.string);
+		free(ots.string);
+		free(ots.align);
+		return its;
+	}
 }
 
 static struct transformed_string	preprocess_module(struct preprocessor	*repp, struct preprocessor_module	*mod, struct transformed_string	ts, int	*Nchanges)
@@ -146,10 +219,29 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 			{
 				int i; for(i=0;i<r->re.re_nsub+1;i++) { m[i].rm_so += off; m[i].rm_eo += off; }
 				redo = ts.length - m->rm_eo;
-				ts = replace(ts, m, r->rep);
-				(*Nchanges)++;
+				ts = replace(ts, m, r->rep, Nchanges);
 				DEBUG(" `%S' -> `%S' yields `%S'\n", r->pat, r->rep, ts.string);
 				if(redo)goto again;
+			}
+			break;
+		}
+		case	rtMask:
+		{
+			struct pprule	*r = &mod->rules[i];
+			int				redo = ts.length, off;
+			regmatch_t	m[r->re.re_nsub+1];
+			printf("EXECUTING MASK pattern...\n");
+			maskagain:
+			off = ts.length - redo;
+			if(!regexec(&r->re, ts.string+off, r->re.re_nsub+1, m, (off!=0 ? REG_NOTBOL : 0)))
+			{
+				int j;
+				for(j=0;j<r->re.re_nsub+1;j++) { m[j].rm_so += off; m[j].rm_eo += off; }
+				redo = ts.length - m->rm_eo;
+				printf("MASKING %.*S\n", (int)(m->rm_eo - m->rm_so), ts.string+m->rm_so);
+				for(j=m->rm_so;j<m->rm_eo;j++)
+					ts.align[j].mask = (j==m->rm_so)?MASK_BEGIN:MASK_CONTINUE;
+				if(redo)goto maskagain;
 			}
 			break;
 		}
@@ -173,35 +265,6 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 	return ts;
 }
 
-/*static void	repair_alignment(wchar_t	*input, struct transformed_string	ts)
-{
-	int	last_ip = -1;
-	int	i, missing_count;
-
-	for(i=0;i<ts.length;i++)
-	{
-		if(ts.align[i]==-1)
-		{
-			int	next_ip, missing_input_count;
-			for(missing_count=0;i+missing_count<ts.length;missing_count++)
-				if(ts.align[i+missing_count] != -1)break;
-			if(i+missing_count==ts.length)
-			{
-				next_ip= wstrlen(input)+1;
-			}
-			else next_ip = ts.align[i+missing_count];
-			missing_input_count = next_ip - (last_ip+1);
-			if(missing_input_count == missing_count)
-			{
-				for(missing_count=0;missing_count<missing_input_count;missing_count++)
-					ts.align[i+missing_count] = last_ip+1 + missing_count;
-				i += missing_count-1;
-			}
-		}
-		else last_ip = ts.align[i];
-	}
-}*/
-
 int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char	***Words, int	**CFrom, int	**CTo)
 {
 	if(check_mbs(mbstring) != 0)return -1;
@@ -211,13 +274,17 @@ int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char
 	struct transformed_string	ts;
 	ts.string = towide(mbstring);
 	ts.length = wstrlen(ts.string);
-	ts.align = malloc(sizeof(int) * ts.length);
-	for(i=0;i<ts.length;i++)ts.align[i] = i;
+	ts.align = malloc(sizeof(struct alignment) * ts.length);
+	for(i=0;i<ts.length;i++)
+	{
+		ts.align[i].begin = i;
+		ts.align[i].end = i+1;
+		ts.align[i].mask = 0;
+	}
 	ts = preprocess_module(repp, repp->main_module, ts, &nchanges);
 	DEBUG("rewrote to '%S' (%d changes)\n", ts.string, nchanges);
 
 	wchar_t	*orig_str = towide(mbstring);
-//	repair_alignment(orig_str, ts);
 
 	// tokenize
 	wchar_t	*p = ts.string;
@@ -243,10 +310,10 @@ int	repp_preprocess(struct preprocessor	*repp, char	*mbstring, int	*Nwords, char
 			int	c_to = 0;
 			for(i=trans_c_from;i<trans_c_to;i++)
 			{
-				if(ts.align[i] != -1)
+				if(ts.align[i].begin != -1)
 				{
-					if(ts.align[i] < c_from)c_from = ts.align[i];
-					if(ts.align[i]+1 > c_to)c_to = ts.align[i]+1;
+					if(ts.align[i].begin < c_from)c_from = ts.align[i].begin;
+					if(ts.align[i].end > c_to)c_to = ts.align[i].end;
 				}
 				else n_missing++;
 			}
