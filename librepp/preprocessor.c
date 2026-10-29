@@ -149,8 +149,14 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 				ts = replace(ts, m, r->rep);
 				(*Nchanges)++;
 				DEBUG(" `%S' -> `%S' yields `%S'\n", r->pat, r->rep, ts.string);
-				// after an empty match, step over one character so it isn't matched again
-				if(m->rm_eo == m->rm_so && redo)redo--;
+				// after an empty match, step over one character so it isn't matched again;
+				// the end of the string is still searched, as in Perl (`x*' -> `-' on `abc' gives `-a-b-c-')
+				if(m->rm_eo == m->rm_so)
+				{
+					if(!redo)break;
+					redo--;
+					goto again;
+				}
 				if(redo)goto again;
 			}
 			break;

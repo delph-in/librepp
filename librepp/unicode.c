@@ -157,6 +157,14 @@ static wchar_t	*wide_translate_re_properties(wchar_t	*str)
 			*p++ = *q++;
 			continue;
 		}
+		if(!in_set && *q == '(' && q[1] == '?' && q[2] == '#')
+		{
+			// (?# comment ) is copied as-is
+			wchar_t	*e = wcschr(q, ')');
+			e = e ? e+1 : q + wcslen(q);
+			while(q<e)*p++ = *q++;
+			continue;
+		}
 		if(!in_set && *q == '[')
 		{
 			in_set = 1;
@@ -166,10 +174,11 @@ static wchar_t	*wide_translate_re_properties(wchar_t	*str)
 			if(*q == ']')*p++ = *q++;
 			continue;
 		}
-		if(in_set && *q == '[' && q[1] == ':')
+		if(in_set && *q == '[' && (q[1] == ':' || q[1] == '.' || q[1] == '='))
 		{
-			// copy a POSIX class like [:alpha:] whole
-			wchar_t	*e = wcsstr(q+2, L":]");
+			// copy [:alpha:], [.a.] and [=a=] whole; they contain a ']' of their own
+			wchar_t	term[3] = {q[1], ']', 0};
+			wchar_t	*e = wcsstr(q+2, term);
 			if(e)
 			{
 				e += 2;
