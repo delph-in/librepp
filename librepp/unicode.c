@@ -103,29 +103,49 @@ wchar_t	*wide_escape_re_braces(wchar_t	*str)
 
 	wchar_t	*p = out, *q = str;
 	int	in_pat = 0;
+	wchar_t	prev_esc = 0;	// the escaped character if the previous token was an escape like \p
 	while(*q)
 	{
-		if(*q == '{')
+		if(*q == '\\' && q[1])
 		{
-			int	is_range = 1, is_id = 1;
+			// escapes are copied as-is; \Q...\E is quoted text, copied as-is too
+			if(q[1] == 'Q')
+			{
+				wchar_t	*e = q+2;
+				while(*e && !(e[0] == '\\' && e[1] == 'E'))e++;
+				if(*e)e += 2;
+				while(q<e)*p++ = *q++;
+				prev_esc = 0;
+				continue;
+			}
+			prev_esc = q[1];
+			*p++ = *q++;
+			*p++ = *q++;
+			continue;
+		}
+		if(*q == '{' && !in_pat)
+		{
+			int	is_range = 1, is_id;
 			wchar_t	*s = q+1;
 			while(*s && *s != '}')
 			{
-				if(!isdigit(*s) && *s!=',')
+				if(!(*s >= '0' && *s <= '9') && *s!=',')
 					is_range = 0;
-				if(*s == '{')
-					is_id = 0;
 				s++;
 			}
-			if(s<str+2)is_id = 0;
-			else if(s[-2] != '\\')is_id = 0;
-			else if(s[-1] != 'x' && s[-1] != 'p' && s[-1] != 'P')is_id = 0;
+			if(s == q+1 || !*s)is_range = 0;
+			// \x{...}, \p{...} and \P{...} take a braced argument
+			is_id = (prev_esc == 'x' || prev_esc == 'p' || prev_esc == 'P');
 			if(is_range || is_id)
 				in_pat = 1;
 			else *p++ = '\\';
 		}
-		else if(*q == '}' && !in_pat)
-			*p++ = '\\';
+		else if(*q == '}')
+		{
+			if(in_pat)in_pat = 0;
+			else *p++ = '\\';
+		}
+		prev_esc = 0;
 		*p++ = *q++;
 	}
 	*p = 0;
@@ -157,6 +177,7 @@ wchar_t	*wide_unescape_re(wchar_t	*str)
 		else *p++ = *q++;
 	}
 	*p = 0;
-	return wide_escape_re_braces(out);
-	//return out;
+	wchar_t	*escaped = wide_escape_re_braces(out);
+	free(out);
+	return escaped;
 }

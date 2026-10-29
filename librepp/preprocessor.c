@@ -174,6 +174,15 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 	while(inp<its.string + m->rm_eo)
 		process_lost_char(*inp++, *ina++);
 
+	// holes that no lost character came along to fill are just missing alignments
+	struct alignment	*ha;
+	for(ha=align;ha<pa;ha++)
+		if(ha->begin == -2)
+		{
+			ha->begin = -1;
+			ha->end = -1;
+		}
+
 	memcpy(p, its.string+m->rm_eo, sizeof(wchar_t)*(its.length - m->rm_eo));
 	memcpy(pa, its.align+m->rm_eo, sizeof(struct alignment)*(its.length - m->rm_eo));
 	p[its.length - m->rm_eo] = 0;
@@ -192,7 +201,7 @@ static struct transformed_string	replace(struct transformed_string	its, regmatch
 	}
 	else
 	{
-		printf("masking BLOCKED:\n%S\n%S\n", its.string, ots.string);
+		DEBUG("masking BLOCKED:\n%S\n%S\n", its.string, ots.string);
 		free(ots.string);
 		free(ots.align);
 		return its;
@@ -230,7 +239,7 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 			struct pprule	*r = &mod->rules[i];
 			int				redo = ts.length, off;
 			regmatch_t	m[r->re.re_nsub+1];
-			printf("EXECUTING MASK pattern...\n");
+			DEBUG("EXECUTING MASK pattern...\n");
 			maskagain:
 			off = ts.length - redo;
 			if(!regexec(&r->re, ts.string+off, r->re.re_nsub+1, m, (off!=0 ? REG_NOTBOL : 0)))
@@ -238,9 +247,19 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 				int j;
 				for(j=0;j<r->re.re_nsub+1;j++) { m[j].rm_so += off; m[j].rm_eo += off; }
 				redo = ts.length - m->rm_eo;
-				printf("MASKING %.*S\n", (int)(m->rm_eo - m->rm_so), ts.string+m->rm_so);
+				if(m->rm_eo == m->rm_so)
+				{
+					// empty match; nothing to mask, but step past it so we don't match it again
+					if(redo)redo--;
+					if(redo)goto maskagain;
+					break;
+				}
+				DEBUG("MASKING %.*S\n", (int)(m->rm_eo - m->rm_so), ts.string+m->rm_so);
+				// a match that starts inside an existing masked region extends that region
+				// rather than splitting it; any region it covers is merged into it.
 				for(j=m->rm_so;j<m->rm_eo;j++)
-					ts.align[j].mask = (j==m->rm_so)?MASK_BEGIN:MASK_CONTINUE;
+					if(j>m->rm_so || ts.align[j].mask!=MASK_CONTINUE)
+						ts.align[j].mask = (j==m->rm_so)?MASK_BEGIN:MASK_CONTINUE;
 				if(redo)goto maskagain;
 			}
 			break;

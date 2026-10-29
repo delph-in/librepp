@@ -219,7 +219,7 @@ static int	load_repp_module(struct preprocessor	*repp, int	nlines, wchar_t	**lin
 				mod->rules[mod->nrules-1].type = rtMask;
 				mod->rules[mod->nrules-1].pat = wide_unescape_re(line+1);
 				mod->rules[mod->nrules-1].rep = NULL;
-				printf("LOADED a MASK expression: %S\n", line+1);
+				DEBUG("LOADED a MASK expression: %S\n", line+1);
 				continue;
 			default:	fprintf(stderr, "format error: unknown type `%c'.\n", typec); continue; //exit(-1);
 		}
