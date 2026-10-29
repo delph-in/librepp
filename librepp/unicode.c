@@ -93,6 +93,98 @@ int	wstrcmp(const wchar_t	*a, const wchar_t	*b)
 	return 0;
 }
 
+// Boost.Regex without ICU has no Unicode general categories: \p{L} is taken
+// as [[:lower:]], \p{N} is an error, and inside [...] \p is a literal 'p'.
+// Rewrite the common categories as POSIX classes, which follow the locale.
+static const wchar_t	*posix_class_for_property(const wchar_t	*name, int	len)
+{
+	static const struct { const wchar_t *prop, *cls; } props[] = {
+		{L"L", L"alpha"}, {L"Lu", L"upper"}, {L"Ll", L"lower"},
+		{L"N", L"digit"}, {L"Nd", L"digit"},
+		{L"P", L"punct"}, {L"Z", L"space"}, {L"Zs", L"blank"},
+		{NULL, NULL}};
+	int	i;
+	for(i=0;props[i].prop;i++)
+		if(wcslen(props[i].prop) == len && !wcsncmp(props[i].prop, name, len))
+			return props[i].cls;
+	return NULL;
+}
+
+static wchar_t	*wide_translate_re_properties(wchar_t	*str)
+{
+	// "\pL" (3 chars) becomes at most "[^[:alpha:]]" (12 chars)
+	wchar_t	*out = calloc(sizeof(wchar_t), 4*wcslen(str) + 1);
+	wchar_t	*p = out, *q = str;
+	int	in_set = 0;
+	while(*q)
+	{
+		if(*q == '\\' && (q[1] == 'p' || q[1] == 'P'))
+		{
+			const wchar_t	*name = q+2, *cls = NULL;
+			int	len = 0, skip = 0;
+			if(*name == '{')
+			{
+				name++;
+				while(name[len] && name[len] != '}')len++;
+				if(name[len] == '}')skip = 2 + 1 + len + 1;
+			}
+			else if(*name)
+			{
+				len = 1;
+				skip = 3;
+			}
+			if(skip)cls = posix_class_for_property(name, len);
+			if(cls)
+			{
+				int	neg = (q[1] == 'P');
+				if(in_set)p += swprintf(p, 32, L"[:%ls%ls:]", neg?L"^":L"", cls);
+				else p += swprintf(p, 32, L"[%ls[:%ls:]]", neg?L"^":L"", cls);
+				q += skip;
+				continue;
+			}
+		}
+		if(*q == '\\' && q[1] == 'Q')
+		{
+			// quoted text is copied as-is
+			wchar_t	*e = q+2;
+			while(*e && !(e[0] == '\\' && e[1] == 'E'))e++;
+			if(*e)e += 2;
+			while(q<e)*p++ = *q++;
+			continue;
+		}
+		if(*q == '\\' && q[1])
+		{
+			*p++ = *q++;
+			*p++ = *q++;
+			continue;
+		}
+		if(!in_set && *q == '[')
+		{
+			in_set = 1;
+			*p++ = *q++;
+			// a ']' right after '[' or '[^' is a literal
+			if(*q == '^')*p++ = *q++;
+			if(*q == ']')*p++ = *q++;
+			continue;
+		}
+		if(in_set && *q == '[' && q[1] == ':')
+		{
+			// copy a POSIX class like [:alpha:] whole
+			wchar_t	*e = wcsstr(q+2, L":]");
+			if(e)
+			{
+				e += 2;
+				while(q<e)*p++ = *q++;
+				continue;
+			}
+		}
+		if(in_set && *q == ']')in_set = 0;
+		*p++ = *q++;
+	}
+	*p = 0;
+	return out;
+}
+
 wchar_t	*wide_escape_re_braces(wchar_t	*str)
 {
 	int	nbr = 0, i;
@@ -177,7 +269,9 @@ wchar_t	*wide_unescape_re(wchar_t	*str)
 		else *p++ = *q++;
 	}
 	*p = 0;
-	wchar_t	*escaped = wide_escape_re_braces(out);
+	wchar_t	*translated = wide_translate_re_properties(out);
 	free(out);
+	wchar_t	*escaped = wide_escape_re_braces(translated);
+	free(translated);
 	return escaped;
 }
