@@ -80,6 +80,8 @@ void	repp_print_rules(struct preprocessor	*repp)
 		{
 			if(mod->rules[j].type == rtReplace)
 				printf("  repl:  pat=`%S', rep=`%S'\n", mod->rules[j].pat, mod->rules[j].rep);
+			else if(mod->rules[j].type == rtMask)
+				printf("  mask:  pat=`%S'\n", mod->rules[j].pat);
 			else printf("  call:  %S\n", mod->rules[j].pat);
 		}
 	}
@@ -102,7 +104,7 @@ void	repp_compile_rules(struct preprocessor	*repp)
 		struct preprocessor_module	*mod = repp->modules[i];
 		for(j=0;j<mod->nrules;j++)
 		{
-			if(mod->rules[j].type == rtReplace)
+			if(mod->rules[j].type == rtReplace || mod->rules[j].type == rtMask)
 			{
 				err = regcomp(&mod->rules[j].re, mod->rules[j].pat, REGEX_FLAGS);
 				if(err)
@@ -156,7 +158,7 @@ static int	load_repp_module(struct preprocessor	*repp, int	nlines, wchar_t	**lin
 		switch(typec)
 		{
 			case	'@':	/*fprintf(stderr, "date: %S\n", pattern);*/	continue;
-			case	':':	repp->delim_pat = wide_unescape(pattern);		continue;
+			case	':':	repp->delim_pat = wide_unescape_re(pattern);		continue;
 			case	'<':
 				swprintf(subpath, 1023, L"%s/%S", basepath, pattern);
 				load_repp_module_from_file_with_name(repp, tombs(subpath), name);
@@ -208,8 +210,16 @@ static int	load_repp_module(struct preprocessor	*repp, int	nlines, wchar_t	**lin
 				mod->nrules++;
 				mod->rules = realloc(mod->rules, sizeof(struct pprule) * mod->nrules);
 				mod->rules[mod->nrules-1].type = rtReplace;
-				mod->rules[mod->nrules-1].pat = wide_unescape(pattern);
+				mod->rules[mod->nrules-1].pat = wide_unescape_re(pattern);
 				mod->rules[mod->nrules-1].rep = wstrdup(rep);
+				continue;
+			case	'=':
+				mod->nrules++;
+				mod->rules = realloc(mod->rules, sizeof(struct pprule) * mod->nrules);
+				mod->rules[mod->nrules-1].type = rtMask;
+				mod->rules[mod->nrules-1].pat = wide_unescape_re(line+1);
+				mod->rules[mod->nrules-1].rep = NULL;
+				DEBUG("LOADED a MASK expression: %S\n", line+1);
 				continue;
 			default:	fprintf(stderr, "format error: unknown type `%c'.\n", typec); continue; //exit(-1);
 		}
