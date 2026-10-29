@@ -149,6 +149,8 @@ static struct transformed_string	preprocess_module(struct preprocessor	*repp, st
 				ts = replace(ts, m, r->rep);
 				(*Nchanges)++;
 				DEBUG(" `%S' -> `%S' yields `%S'\n", r->pat, r->rep, ts.string);
+				// after an empty match, step over one character so it isn't matched again
+				if(m->rm_eo == m->rm_so && redo)redo--;
 				if(redo)goto again;
 			}
 			break;
